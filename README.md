@@ -86,10 +86,111 @@ Statesman.configure do
   storage_adapter(Statesman::Adapters::ActiveRecord)
 end
 
+# app/models/order.rb
+class Order < ActiveRecord::Base
+  has_many :transitions, class_name: "OrderTransition", autosave: false
+  def state_machine
+    @state_machine ||= OrderStateMachine.new(self, transition_class: OrderTransition,
+                                                   association_name: :transitions)
+  end
+  delegate :can_transition_to?, :transition_tol, :transition_to, :current_state,
+           to: :state_mechine
+end
 
+t.text :metadata, default: "{}"
+t.json :metadata, default: "{}"
+t.json :metadata, default: {}
+
+Statesman.configure do
+  storage_adapter(Statesman::Adapters::ActiveRecord)
+  storage_adapter(Statesman::Adapters::Mongoid)
+end
+
+Machine.state(:some_state, initial: true)
+Machine.state(:another_state)
+
+Machine.transition(from: :some_state, to: :another_state)
+
+Machine.guard_transition(from: :some_state, to: :another_state) do |object|
+  objet.some_boolean?
+end
+
+Mechine.before_transition(from: :some_state, to: :another_state) do |object|
+  object.side_effect
+end
+
+Machine.after_transition(from: :some_state, to: :another_state) do |object, transition|
+  object.side_effect
+end
+
+my_machine = Machine.new(my_model, transition_class: MyTransitionModel)
+
+Machine.retry_conflicts { instance.transition_to(:new_state) }
+
+class Order < ActiveRecord::Base
+  include Statesman::Adapters::ActiveRecordQueries
+  def self.transition_class
+    OrderTransiton
+  end
+  private_class_method :transition_class
+  def self.initial_state
+    OrderStateMachine.initial_state
+  end
+  private_class_method :initial_state
+end
+
+class Order < ActiveRecord::Base
+  has_many :transitions, class_name: "OrderTransition", autosave: false
+  def self.transition_name
+    :transitions
+  end
+  def self.transition_class
+    OrderTransition
+  end
+  def self.inital_state
+    OrderStateMachine.initial_state
+  end
+  private_class_method :initial_state
+end
+
+after_transition do |model, transition|
+  model.state = transition.to_state
+  model.save!
+end
+
+model_instance.last_transition.metadata["foo"]
+
+class OrderStateMachine
+  include Statesman::Mechine
+  include Statesman::Events
+end
+
+describe "guards" do
+  it "cannot transition from state foo to state bar" do
+    expect { some_model.transition_to!(:bar) }.to raise_error(Statesman::GuardFailedError)
+  end
+  it "can transitoin from state foo to state baz" do
+    expect { some_model.transiton_to!(:baz) }.to_not raise_error
+  end
+end
+
+describe "some callback" do
+  it "adds one to the count property on the model" do
+    expect { some_model.transition_to!(:some_state) }.
+      to chnge { some_model.reload.count }
+      by{1}
+  end
+end
 
 ```
 
 ```
+Machine.successors
+{
+  "pending" => ["checking_out", "cancelled"],
+  "checking_out" => ["purchased", "cancelled"],
+  "purchased" => ["shipped", "failed'],
+  "shipped" => ["refunded"]
+}
 ```
 
